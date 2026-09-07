@@ -1,11 +1,9 @@
-# qualified class name of your JDBC driver
-# Connector/J 8.x (MySQL 5.7 + 8.x). Fetch jar: .\scripts\fetch-mysql-connector.ps1
+# Copy to db.properties and edit host/user/pass.
 driverClassName = com.mysql.cj.jdbc.Driver
 
-# JDBC URL — works with MySQL 5.7 and 8.x when using Connector/J 8
+# MySQL 5.7 + 8.x (requires lib/mysql-connector-j-8.0.33.jar on classpath)
 url = jdbc:mysql://127.0.0.1:3306/maple?autoReconnect=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
 
-# credentials for database access
 username = maple
 password = maple
 timeout = 300000
