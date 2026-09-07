@@ -4,6 +4,7 @@ import database.DatabaseConnection;
 import handling.cashshop.CashShopServer;
 import handling.channel.ChannelServer;
 import handling.login.LoginServer;
+import handling.login.bridge.LoginBridgeServer;
 import handling.world.World;
 import java.sql.SQLException;
 import java.util.Set;
@@ -69,6 +70,7 @@ public class ShutdownServer implements Runnable
         System.out.println("服务端关闭事件 1 已完成.");
         System.out.println("服务端关闭事件 2 开始...");
         try {
+            LoginBridgeServer.stop();
             LoginServer.shutdown();
             System.out.println("登录伺服器关闭完成...");
         }
