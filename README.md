@@ -37,6 +37,7 @@
 - `RoyMS.CSPort`：商城（默认 **8600**）
 - `RoyMS.Count`：频道数量（默认 6，上限代码内限制 10）
 - `RoyMS.AutoRegister`：自动注册
+- `RoyMS.LoginBridge` / `RoyMS.LoginBridgePort`：本机 Go 登录桥（默认 `127.0.0.1:17979`）
 - `RoyMS.Exp` / `Meso` / `Drop` 等：倍率
 
 ### 启动
@@ -119,6 +120,50 @@ chmod +x start.sh
 - **handoff 契约**：选角成功后 `LoginServer.putLoginAuth(charId, ip, tempIp, channel)`，客户端再以 `PLAYER_LOGGEDIN` 连目标频道；Go 壳若自管登录，需同样写入频道侧认可的 auth / `CharacterTransfer` 或保持 Java 登录服仅做 auth 表协作。
 - **建议不动**：频道内玩法、`scripts/`、WZ；只替换登录进程或在其前加一层代理。
 - **配置**：对外 IP/端口仍以 `config/server.properties` 为准，避免客户端重定向到错误地址。
+
+---
+
+## LoginBridge（Go 登录壳 · Phase 1）
+
+本机回环 **HTTP JSON** 桥，供外部 Go 登录 UI：登录 → 区服/频道 → 角色列表 → 选角（调用现有 `LoginServer.putLoginAuth`）→ 取得频道 host/port，再启动原版 CMS079 客户端连频道。
+
+### 配置（`config/server.properties`）
+
+| 键 | 默认 | 说明 |
+|----|------|------|
+| `RoyMS.LoginBridge` | `true`（本 fork） | `false` 时不启动 |
+| `RoyMS.LoginBridgePort` | `17979` | 仅绑定 **127.0.0.1**（永不 `0.0.0.0`） |
+
+源码：`src/handling/login/bridge/`（JDK 内置 `com.sun.net.httpserver`）。`LoginServer.setOn()` 后启动；`shutdown`/`ShutdownServer` 时停止。
+
+### API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 探活 |
+| POST | `/api/login` | `{"username","password"}` → token |
+| GET | `/api/worlds` | 世界/频道 |
+| GET | `/api/characters?world=0` | 角色列表 |
+| POST | `/api/select` | `{"characterId","channel"}` → putLoginAuth + host/port |
+
+### curl
+
+```bash
+curl -s http://127.0.0.1:17979/health
+TOKEN=$(curl -s -X POST http://127.0.0.1:17979/api/login -H 'Content-Type: application/json' -d '{"username":"demo","password":"demo"}' | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+curl -s http://127.0.0.1:17979/api/worlds -H "Authorization: Bearer $TOKEN"
+curl -s 'http://127.0.0.1:17979/api/characters?world=0' -H "Authorization: Bearer $TOKEN"
+curl -s -X POST http://127.0.0.1:17979/api/select -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"characterId":1,"channel":1}'
+```
+
+### 重建 jar
+
+```bash
+./jdk/bin/javac -encoding UTF-8 -source 1.7 -target 1.7 -cp ./bin/maple.jar -d /tmp/maple-bridge-classes \
+  src/handling/login/bridge/*.java src/handling/login/LoginServer.java src/server/ShutdownServer.java
+cd /tmp/maple-bridge-classes && jar uf /path/to/repo/bin/maple.jar \
+  handling/login/bridge/*.class handling/login/LoginServer.class server/ShutdownServer.class
+```
 
 ---
 

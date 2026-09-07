@@ -19,6 +19,7 @@ import org.apache.mina.filter.codec.ProtocolCodecFilter;
 import org.apache.mina.transport.socket.SocketSessionConfig;
 import org.apache.mina.transport.socket.nio.NioSocketAcceptor;
 import server.ServerProperties;
+import handling.login.bridge.LoginBridgeServer;
 import tools.Triple;
 
 public class LoginServer
@@ -106,6 +107,7 @@ public class LoginServer
             return;
         }
         System.out.println("正在关闭登录伺服器...");
+        LoginBridgeServer.stop();
         LoginServer.finishedShutdown = true;
     }
     
@@ -168,6 +170,7 @@ public class LoginServer
     
     public static void setOn() {
         LoginServer.finishedShutdown = false;
+        LoginBridgeServer.startIfEnabled();
     }
     
     public static int 个人PK地图() {
