@@ -42,7 +42,16 @@ public final class LoginBridgeHandlers {
             }
             final MapleClient c = LoginBridgeServer.newBridgeClient();
             c.setAccountName(username);
-            final int loginok = c.login(username, password, false);
+            int loginok = c.login(username, password, false);
+            // Bridge has no real IoSession; unlockAcc often leaves loggedin=2.
+            // Force NOTLOGGEDIN and retry once on already_logged_in (7).
+            if (loginok == 7) {
+                try {
+                    c.updateLoginState(0, null);
+                } catch (Exception ignore) {
+                }
+                loginok = c.login(username, password, false);
+            }
             if (loginok != 0) {
                 LoginBridgeServer.writeJson(ex, 401, "{\"ok\":false,\"error\":\"" + LoginBridgeServer.loginErrorMessage(loginok) + "\",\"code\":" + loginok + "}");
                 return;
@@ -71,7 +80,7 @@ public final class LoginBridgeHandlers {
             sb.append(",\"accountId\":").append(c.getAccID());
             sb.append(",\"username\":\"").append(LoginBridgeJson.escape(username)).append("\"");
             sb.append(",\"gender\":").append((int) c.getGender());
-            sb.append(",\"gm\":").append(c.isGm() ? "true" : "false");
+            sb.append(",\"gm\":").append(c.isGm() ? 1 : 0);
             sb.append("}");
             LoginBridgeServer.writeJson(ex, 200, sb.toString());
         }
