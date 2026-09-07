@@ -40,7 +40,8 @@ public final class LoginBridgeServer {
         if (httpServer != null) {
             return;
         }
-        if (!Boolean.parseBoolean(ServerProperties.getProperty("RoyMS.LoginBridge", "false"))) {
+        // Default true for this fork; set RoyMS.LoginBridge=false to disable.
+        if (!Boolean.parseBoolean(ServerProperties.getProperty("RoyMS.LoginBridge", "true"))) {
             System.out.println("[LoginBridge] disabled (RoyMS.LoginBridge=false)");
             return;
         }
