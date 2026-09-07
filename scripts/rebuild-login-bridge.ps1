@@ -40,6 +40,7 @@ $sources = @()
 $sources += Get-ChildItem .\src\handling\login\bridge\*.java
 $sources += Get-Item .\src\handling\login\LoginServer.java
 $sources += Get-Item .\src\server\ShutdownServer.java
+$sources += Get-Item .\src\database\DatabaseException.java
 
 Write-Host "Compiling $($sources.Count) sources..."
 & $javac -encoding UTF-8 -source 1.7 -target 1.7 `
