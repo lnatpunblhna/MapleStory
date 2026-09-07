@@ -124,7 +124,7 @@ public class MapleFamily implements Serializable
             PreparedStatement ps = con.prepareStatement("SELECT * FROM families WHERE familyid = ?");
             ps.setInt(1, fid);
             ResultSet rs = ps.executeQuery();
-            if (!rs.first()) {
+            if (!rs.next()) { // Connector/J 8: FORWARD_ONLY
                 rs.close();
                 ps.close();
                 this.id = -1;
