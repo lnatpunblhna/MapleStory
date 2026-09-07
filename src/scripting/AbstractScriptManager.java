@@ -5,7 +5,6 @@ import client.MapleClient;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -38,6 +37,11 @@ public abstract class AbstractScriptManager {
                     return null;
                 }
                 engine = AbstractScriptManager.sem.getEngineByName("javascript");
+                // Nashorn (JDK8): Rhino-style importPackage needs mozilla_compat
+                try {
+                    engine.eval("load('nashorn:mozilla_compat.js');");
+                } catch (Exception ignore) {
+                }
                 if (c != null) {
                     c.setScriptEngine(path, engine);
                 }
@@ -50,8 +54,8 @@ public abstract class AbstractScriptManager {
             }
             return (Invocable) engine;
         } catch (Exception e) {
-            System.err.println("Error executing script. Path: " + path + "\nException " + e);
-            FileoutputUtil.log(FileoutputUtil.ScriptEx_Log, "Error executing script. Path: " + path + "\nException " + e);
+            System.err.println("Error executing script. Path: " + path + "\\nException " + e);
+            FileoutputUtil.log(FileoutputUtil.ScriptEx_Log, "Error executing script. Path: " + path + "\\nException " + e);
             return null;
         } finally {
             try {

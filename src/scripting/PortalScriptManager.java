@@ -46,6 +46,10 @@ public class PortalScriptManager
         InputStream fr = null;
         final ScriptEngine portal = PortalScriptManager.sef.getScriptEngine();
         try {
+            portal.eval("load('nashorn:mozilla_compat.js');");
+        } catch (Exception ignore) {
+        }
+        try {
             fr = new FileInputStream(scriptFile);
             final BufferedReader bf = new BufferedReader(new InputStreamReader(fr, EncodingDetect.getJavaEncode(scriptFile)));
             final CompiledScript compiled = ((Compilable)portal).compile(bf);
