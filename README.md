@@ -12,22 +12,27 @@
 
 | 路径 | 作用 |
 |------|------|
-| `start.sh` | 启动入口：用捆绑 JRE 跑 `bin/maple.jar` |
+| `start.ps1` / `start.sh` | Windows / Linux 启动（classpath 含 Connector/J 8） |
 | `bin/maple.jar` | 已编译服务端 |
-| `jdk/` | 捆绑 JDK/JRE（`jdk/release` → Java **1.7.0**） |
+| `lib/` | `mysql-connector-j-8.0.33.jar`（用 `scripts/fetch-mysql-connector.ps1` 下载） |
+| `jdk/` | 可选捆绑 JRE（常为 1.7；推荐本机 **JDK 8+** 启动） |
 | `config/` | `server.properties` / `db.properties` 等 |
 | `scripts/` | JS 脚本 + `scripts/wz` 资源 |
 | `src/` | Java 源码（与 jar 对应） |
 | `ms_20210813_234816.sql.gz` | MySQL 初始库（gzip） |
 | `logs/` | 运行日志 |
 
-### 数据库
+### 数据库（MySQL 5.7 / 8.x）
 
-1. 准备 MySQL，字符集建议 UTF-8。
+1. 准备 MySQL 5.7 或 8.x，字符集建议 UTF-8 / utf8mb4。
 2. 解压并导入：`gunzip -c ms_20210813_234816.sql.gz | mysql -u... -p...`
-3. 编辑 `config/db.properties`（默认示例）：
-   - `url = jdbc:mysql://127.0.0.1:3306/maple?...`
-   - `username` / `password`（仓库默认 `maple` / `maple`，请改掉）
+3. 下载驱动：`.\scripts\fetch-mysql-connector.ps1`（Maven Central → `lib/mysql-connector-j-8.0.33.jar`）
+4. 编辑 `config/db.properties`：
+   - `driverClassName = com.mysql.cj.jdbc.Driver`
+   - URL 建议带：`useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai`（5.7/8 通用）
+   - `username` / `password`（请改掉默认）
+
+**说明**：旧版 `com.mysql.jdbc.Driver` 连不上 MySQL 8 默认的 `caching_sha2_password`。换 Connector/J 8 后一般无需再改认证插件；若仍失败，可把账号改成 `mysql_native_password` 作兜底。
 
 ### 服务端配置要点（`config/server.properties`）
 
@@ -42,25 +47,26 @@
 
 ### 启动
 
-在仓库根目录：
+**Windows（推荐）**
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk1.8.0_202"  # 按本机改
+.\scripts\fetch-mysql-connector.ps1
+.\start.ps1
+```
+
+**Linux**
 
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-等价于：
-
-```bash
-./jdk/jre/bin/java -cp ./bin/maple.jar -server \
-  -DhomePath=./config/ -DscriptsPath=./scripts/ -DwzPath=./scripts/wz \
-  -Xms512m -Xmx2048m \
-  server.Start
-```
+Classpath 为 `lib/mysql-connector-j-8.0.33.jar` + `bin/maple.jar`（lib 在前）。
 
 入口类：`src/server/Start.java`（依次启动 World → LoginServer → ChannelServer → CashShopServer）。
 
-**环境**：Linux x86_64、捆绑 JRE 1.7、MySQL。Windows/GUI 控制台可通过 `RoyMS.loadGui=true` 尝试（非本 fork 重点）。
+**环境**：推荐 **JDK/JRE 8+** + MySQL 5.7/8。捆绑 JRE 1.7 可跑旧逻辑，但不再作为升级路径首选。
 
 ---
 
@@ -156,13 +162,11 @@ curl -s 'http://127.0.0.1:17979/api/characters?world=0' -H "Authorization: Beare
 curl -s -X POST http://127.0.0.1:17979/api/select -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"characterId":1,"channel":1}'
 ```
 
-### 重建 jar
+### 重建 jar（Windows）
 
-```bash
-./jdk/bin/javac -encoding UTF-8 -source 1.7 -target 1.7 -cp ./bin/maple.jar -d /tmp/maple-bridge-classes \
-  src/handling/login/bridge/*.java src/handling/login/LoginServer.java src/server/ShutdownServer.java
-cd /tmp/maple-bridge-classes && jar uf /path/to/repo/bin/maple.jar \
-  handling/login/bridge/*.class handling/login/LoginServer.class server/ShutdownServer.class
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk1.8.0_202"
+.\scripts\rebuild-login-bridge.ps1
 ```
 
 ---
