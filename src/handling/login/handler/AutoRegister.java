@@ -22,7 +22,8 @@ public class AutoRegister
             final PreparedStatement ps = con.prepareStatement("SELECT name FROM accounts WHERE name = ?");
             ps.setString(1, login);
             final ResultSet rs = ps.executeQuery();
-            if (rs.first()) {
+            // Connector/J 8 defaults to TYPE_FORWARD_ONLY — use next(), not first()
+            if (rs.next()) {
                 accountExists = true;
             }
             rs.close();
@@ -41,7 +42,7 @@ public class AutoRegister
             final PreparedStatement ps = con.prepareStatement("SELECT name FROM accounts WHERE id = ?");
             ps.setInt(1, id);
             final ResultSet rs = ps.executeQuery();
-            if (rs.first()) {
+            if (rs.next()) {
                 accountExists = true;
             }
             rs.close();
@@ -63,29 +64,37 @@ public class AutoRegister
             System.out.println(ex);
             return;
         }
+        AutoRegister.success = false;
         try {
             final PreparedStatement ipc = con.prepareStatement("SELECT macs FROM accounts WHERE macs = ?");
             ipc.setString(1, macs);
             final ResultSet rs = ipc.executeQuery();
-            if (!rs.first() || (rs.last() && rs.getRow() < 100)) {
-                final PreparedStatement ps = con.prepareStatement("INSERT INTO accounts (name, password, email, birthday, macs, SessionIP) VALUES (?, ?, ?, ?, ?, ?)");
-                ps.setString(1, login);
-                ps.setString(2, LoginCrypto.hexSha1(pwd));
-                ps.setString(3, "autoregister@mail.com");
-                ps.setString(4, "2008-04-07");
-                ps.setString(5, macs);
-                ps.setString(6, "/" + sockAddr.substring(1, sockAddr.lastIndexOf(58)));
-                ps.executeUpdate();
-                AutoRegister.success = true;
+            int macCount = 0;
+            while (rs.next()) {
+                ++macCount;
             }
-            AutoRegister.success = true;
-            if (rs.getRow() >= 100) {
+            rs.close();
+            ipc.close();
+            if (macCount >= ACCOUNTS_PER_MAC) {
                 AutoRegister.mac = false;
+                return;
             }
+            final PreparedStatement ps = con.prepareStatement("INSERT INTO accounts (name, password, email, birthday, macs, SessionIP) VALUES (?, ?, ?, ?, ?, ?)");
+            ps.setString(1, login);
+            ps.setString(2, LoginCrypto.hexSha1(pwd));
+            ps.setString(3, "autoregister@mail.com");
+            ps.setString(4, "2008-04-07");
+            ps.setString(5, macs);
+            // sockAddr is typically /ip:port from Mina; keep prior substring logic
+            ps.setString(6, "/" + sockAddr.substring(1, sockAddr.lastIndexOf(58)));
+            ps.executeUpdate();
+            ps.close();
+            AutoRegister.success = true;
         }
         catch (SQLException ex2) {
             ex2.printStackTrace();
             System.out.println(ex2);
+            AutoRegister.success = false;
         }
     }
     
