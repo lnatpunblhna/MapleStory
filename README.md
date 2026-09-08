@@ -16,10 +16,56 @@
 | `bin/maple.jar` | 已编译服务端 |
 | `lib/` | `mysql-connector-j-8.0.33.jar`（用 `scripts/fetch-mysql-connector.ps1` 下载） |
 | `config/` | `server.properties` / `db.properties` 等 |
-| `scripts/` | JS 脚本 + `scripts/wz` 资源 |
+| `scripts/` | JS 脚本 + 构建/工具脚本 |
+| `wz/` | **游戏数据（`*.nx`）——不随仓库分发，需自行生成，见下节** |
 | `src/` | Java 源码（与 jar 对应） |
 | `ms_20210813_234816.sql.gz` | MySQL 初始库（gzip） |
 | `logs/` | 运行日志 |
+
+### 游戏数据（NX）
+
+本仓库**不分发游戏数据**。服务端读 [NX (PKG4)](https://nxformat.github.io/) 格式，请自行从原版 CMS079 客户端的 WZ 转换。
+
+### ⚠️ 转换器需要打补丁
+
+[go-wztonx-converter](https://github.com/ErwinsExpertise/go-wztonx-converter) v0.1.1 **原样无法转换 CMS079**（实测 GMS/MSEA 同样不行）。三个 bug，补丁见 `scripts/wztonx-cms079.patch`：
+
+| 位置 | 问题 |
+|------|------|
+| `wz/encryption.go` `tryExpandXorKey` | 判断条件写反（`len(xorKey) < length` 就 return），AES keystream 永远是空的 |
+| `wz/fileblob.go` `readWZString` | AES XOR 被 `IsEncrypted(uol)` 挡住，而 `encryptedStrings` 从未被填充，恒为 false → 整条解密路径是死代码 |
+| `wz/fileblob.go` `readWZString` | unicode 分支直接 `return string(characters)`，把 UTF-16LE 字节当 UTF-8 用 → 所有中文变乱码 |
+| `wz/utils.go` `expandXorKey` | `len(currentXorKey)` 被减两次，增量扩展时 `make()` 拿到负长度会 panic |
+
+补丁还加了 `-iv` 参数（`sea` / `gms` / `none`）。**CMS079 (ZMS) 用的是 SEA/KMS 的 IV `B9 7D 63 E9`** —— 这是实测出来的：用它解 `String.wz` 根目录，15 个条目全部还原成干净 ASCII（`Consume.img`、`Item.img`、`Skill.img` …），GMS 的 IV 和零 key 都是乱码。
+
+```bash
+git clone https://github.com/ErwinsExpertise/go-wztonx-converter
+cd go-wztonx-converter
+git apply /path/to/MapleStory/scripts/wztonx-cms079.patch
+go build -o wztonx .
+
+# 必须 --server：跳过 bitmap 与 audio
+cd /path/to/客户端 && /path/to/wztonx --server --iv sea \
+  String.wz Etc.wz Quest.wz Skill.wz Item.wz Character.wz Mob.wz Npc.wz Reactor.wz Map.wz
+mkdir -p /path/to/MapleStory/wz && mv *.nx /path/to/MapleStory/wz/
+```
+
+只需要上面这 10 个 —— 服务端代码只会打开它们；`Effect/Morph/Sound/UI/Base/TamingMob/List` 没有任何引用。
+
+`--server` 模式是有意的：本服务端运行期完全不读图像（`MapleDataTool.getImage` 无调用者，`CANVAS`/`MapleCanvas` 在 `src/provider/` 之外无引用），跳过后产物小得多（Reactor.wz 85MB → 0.6MB）。`NXFile` 也因此不带 LZ4 解码——真要用图像得先补上。
+
+### 预检
+
+启服前跑一遍，它会检查那 10 个 `.nx`、启动期会直接读的 `.img` 节点，并抽查中文解码：
+
+```bash
+java -cp bin/maple.jar -DwzPath=./wz tools.NXCheck
+```
+
+正常情况下会打印 `2000000  红色药水`。数据目录由 `-DwzPath` 指定（默认 `./wz`）。
+
+私服自定义数据的注意点：`ms_20210813_234816.sql.gz` 里的商城 / 掉落 / 任务数据是配套原私服 WZ 的，换成原版数据后可能引用不存在的 ID。`src/tools/wztosql/` 下的 dumper 也走 `MapleDataProvider`，可用来从原版数据重建这些表。
 
 ### 数据库（MySQL 5.7 / 8.x）
 
@@ -123,7 +169,7 @@ Classpath 为 `lib/mysql-connector-j-8.0.33.jar` + `bin/maple.jar`（lib 在前�
 
 - **必须兼容**：CMS079 Hello、MapleAESOFB IV、上述 opcode 与 `LoginPacket` / `getServerIP` 字节布局。
 - **handoff 契约**：选角成功后 `LoginServer.putLoginAuth(charId, ip, tempIp, channel)`，客户端再以 `PLAYER_LOGGEDIN` 连目标频道；Go 壳若自管登录，需同样写入频道侧认可的 auth / `CharacterTransfer` 或保持 Java 登录服仅做 auth 表协作。
-- **建议不动**：频道内玩法、`scripts/`、WZ；只替换登录进程或在其前加一层代理。
+- **建议不动**：频道内玩法、`scripts/`、数据层；只替换登录进程或在其前加一层代理。
 - **配置**：对外 IP/端口仍以 `config/server.properties` 为准，避免客户端重定向到错误地址。
 
 ---
@@ -166,6 +212,48 @@ curl -s -X POST http://127.0.0.1:17979/api/select -H "Authorization: Bearer $TOK
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Java\jdk1.8.0_202"
 .\scripts\rebuild-login-bridge.ps1
+```
+
+---
+
+## 数据层（NX provider）
+
+| 路径 | 作用 |
+|------|------|
+| `src/provider/nx/NXFile.java` | 打开 `.nx`（mmap + PKG4 头 + 节点/字符串表），实现 `MapleDataProvider` |
+| `src/provider/nx/NXMapleData.java` | 单个节点，实现 `MapleData` |
+| `src/provider/nx/NX{Entry,DirectoryEntry,FileEntry}.java` | `getRoot()` 的目录骨架 |
+| `src/provider/MapleDataProviderFactory.java` | 入口；`.wz` → `.nx` 后缀替换、大小写不敏感查找、按路径缓存 provider |
+| `src/tools/NXCheck.java` | 启服前的数据预检 |
+
+调用方一处都不用改：43 个 `getDataProvider` 调用点仍然传 `.../Item.wz`，由 factory 换算成 `Item.nx`。
+
+**NX 与 WZ-XML 的类型差异**（改动集中在这几处）：NX 只有 7 种节点类型，WZ 的 `short`/`int` 合并成 Int64、`float`/`double` 合并成 Double。原先 `MapleDataTool` 里 `(float)data.getData()` 这类精确装箱强转会直接 `ClassCastException`，已统一改成 `((Number)...).floatValue()`；运行期绕过 `MapleDataTool` 的直接强转只有 `MapleMapFactory` 的两处 `mobRate`，也一并改了。`MapleLifeFactory` 里判断 `firstAttack` 是否为 `FLOAT` 的分支加上了 `DOUBLE`。
+
+另外 `go-wztonx-converter` 明确「Does NOT sort nodes」，保持 WZ 原始顺序，所以 `NXFile.findChild` 只能线性扫描，不能按 NX 规范假定兄弟节点有序。
+
+### 换用原版数据后补的三处兼容（`MapleLifeFactory.getMonster`）
+
+原私服那份 WZ 被改过、字段比原版齐，所以下面三处既有代码的脆弱点一直没暴露。**都与 NX 无关**，换回原版数据才会踩到：
+
+| 怪物 | 问题 | 修法 |
+|------|------|------|
+| 9300295 / 9300296（迷宫恶树/树荫） | `info/revive/N` 是**字符串**形式的怪物 id，`getInt` 抛 `ClassCastException`（原来的 `(int)getData()` 同样会抛） | 改用 `getIntConvert`，它会 parse 字符串 |
+| 9501016（妖怪书测试） | `info` 里只有一个 `link`，没有任何属性，`getIntConvert("maxHP", …)` 抛 NPE | `info` 缺 `maxHP` 且有 `link` 时，属性整体改从被链接的怪取 |
+| 9999999（黄金蛋） | 没有 `level` 字段 | `getIntConvert("level", …, 1)` 给默认值 |
+
+属性回退**只在 `maxHP` 缺失时触发**：原版 Mob.wz 里 403 只怪带 `link`，其中 402 只自带完整属性、`link` 只用来复用动画，它们不受影响（回归测试逐只核对过 maxHP 没被链接目标覆盖）。
+
+改完后 **1614/1614 怪物、1608/1608 NPC 全部加载成功**。
+
+### 重建 jar
+
+```bash
+./scripts/rebuild-nx-provider.sh          # macOS / Linux
+```
+
+```powershell
+.\scripts\rebuild-nx-provider.ps1         # Windows
 ```
 
 ---

@@ -1,0 +1,149 @@
+diff --git a/main.go b/main.go
+index e4d3805..5b07dc9 100644
+--- a/main.go
++++ b/main.go
+@@ -14,6 +14,8 @@ import (
+ 	"runtime/pprof"
+ 	"strings"
+ 	"time"
++
++	"github.com/ErwinsExpertise/go-wztonx-converter/wz"
+ )
+ 
+ // Version information (set by GoReleaser)
+@@ -38,8 +40,21 @@ func main() {
+ 	debug := flag.Bool("debug", false, "Enable debug logging to file")
+ 	cpuProfile := flag.String("cpuprofile", "", "Write CPU profile to file")
+ 	memProfile := flag.String("memprofile", "", "Write memory profile to file")
++	iv := flag.String("iv", "sea", "WZ AES IV: sea (KMS/MSEA/CMS079), gms, or none (unencrypted)")
+ 	flag.Parse()
+ 
++	switch strings.ToLower(*iv) {
++	case "sea", "kms", "cms", "zms":
++		wz.ActiveIVVariant = wz.VariantSEA
++	case "gms":
++		wz.ActiveIVVariant = wz.VariantGMS
++	case "none", "off", "plain":
++		wz.ActiveIVVariant = wz.VariantNone
++	default:
++		log.Fatalf("unknown -iv %q (expected sea, gms or none)", *iv)
++	}
++	fmt.Printf("WZ IV: %s\n\n", strings.ToLower(*iv))
++
+ 	// CPU profiling
+ 	if *cpuProfile != "" {
+ 		f, err := os.Create(*cpuProfile)
+diff --git a/wz/encryption.go b/wz/encryption.go
+index 7985a26..a45df40 100644
+--- a/wz/encryption.go
++++ b/wz/encryption.go
+@@ -15,6 +15,21 @@ type Encryption struct {
+ const VariantGMS = byte(1)
+ const VariantSEA = byte(2)
+ 
++// VariantNone 表示 WZ 里的字符串没有 AES 加密（老 GMS，或被私服重打包过的 WZ）
++const VariantNone = byte(255)
++
++// ActiveIVVariant 决定 NewFile 用哪个 AES IV，由命令行 -iv 设置。
++// 默认 SEA：CMS079 (ZMS) 实测用的就是 SEA/KMS 的 IV B9 7D 63 E9。
++var ActiveIVVariant = VariantSEA
++
++// NewEncryptionForVariant 在 VariantNone 时返回 nil，表示不做 AES 解密
++func NewEncryptionForVariant(variant byte) *Encryption {
++	if variant == VariantNone {
++		return nil
++	}
++	return NewEncryption(variant)
++}
++
+ func NewEncryption(variant byte) *Encryption {
+ 	m := new(Encryption)
+ 	m.setWZVariant(variant)
+@@ -58,8 +73,9 @@ func (m *Encryption) setWZVariant(variant byte) {
+ }
+ 
+ func (m *Encryption) tryExpandXorKey(length int) {
+-	// Check if we already have enough data
+-	if len(m.xorKey) < length {
++	// FIX: 条件原来写反了 —— key 不够长时反而 return，
++	// 导致 setWZVariant 里那句 tryExpandXorKey(400) 什么也没做，xorKey 永远为空
++	if len(m.xorKey) >= length {
+ 		return
+ 	}
+ 
+diff --git a/wz/file.go b/wz/file.go
+index 5e98954..99f760e 100644
+--- a/wz/file.go
++++ b/wz/file.go
+@@ -43,7 +43,7 @@ func NewFile(filename string) (*WZFile, error) {
+ 	wz.Debug = false
+ 	wz.Filename = filename
+ 	wz.workPool = workpool.New(runtime.NumCPU()*2, 7000)
+-	wz.mainBlob = NewWZFileBlob(wz.filemap, nil, wz)
++	wz.mainBlob = NewWZFileBlob(wz.filemap, NewEncryptionForVariant(ActiveIVVariant), wz)
+ 	wz.LazyLoading = true
+ 
+ 	return wz, nil
+diff --git a/wz/fileblob.go b/wz/fileblob.go
+index 335f121..0efc87e 100644
+--- a/wz/fileblob.go
++++ b/wz/fileblob.go
+@@ -7,6 +7,7 @@ import (
+ 	"fmt"
+ 	"github.com/goinggo/workpool"
+ 	"strconv"
++	"unicode/utf16"
+ )
+ 
+ type WZFileBlob struct {
+@@ -321,10 +322,24 @@ func (m *WZFileBlob) readWZString(uol string) (result string) {
+ 		}
+ 	}
+ 
+-	if m.encryption != nil && m.encryption.IsEncrypted(uol) {
++	// FIX: 去掉 IsEncrypted(uol) 判断 —— encryptedStrings 从来没被填充过，
++	// 它恒为 false，等于整条 AES 解密路径都不会执行。主流 WZ 读取器
++	// （reNX / WZ2NX / MapleLib）都是无条件对所有字符串套 keystream。
++	if m.encryption != nil {
+ 		m.encryption.TransformBuffer(characters)
+ 	}
+ 
++	// FIX: unicode 分支原来直接 return string(characters)，把 UTF-16LE 的字节
++	// 当成 UTF-8 用，所有非 ASCII 字符串（中文物品名等）全变乱码。
++	// 这里补上 UTF-16LE -> UTF-8 的解码。
++	if !ascii {
++		units := make([]uint16, size/2)
++		for j := int32(0); j+1 < size; j += 2 {
++			units[j/2] = uint16(characters[j]) | uint16(characters[j+1])<<8
++		}
++		return string(utf16.Decode(units))
++	}
++
+ 	return string(characters)
+ }
+ 
+diff --git a/wz/utils.go b/wz/utils.go
+index d4347d8..d8ac193 100644
+--- a/wz/utils.go
++++ b/wz/utils.go
+@@ -24,14 +24,14 @@ var WZ_AES_KEY = []byte{
+ 	0x52, 0x00, 0x00, 0x00}
+ 
+ func expandXorKey(currentIV, aesKey, currentXorKey []byte, neededLength int) (newIV []byte, newXorKey []byte) {
+-	finalLength := int(neededLength / 16)
+-	if neededLength%16 != 0 {
+-		finalLength += 1
++	// FIX: len(currentXorKey) 原来被减了两次，增量扩展时 make() 会拿到负长度而 panic
++	finalLength := ((neededLength + 15) / 16) * 16
++	grow := finalLength - len(currentXorKey)
++	if grow <= 0 {
++		return currentIV, currentXorKey
+ 	}
+-	finalLength *= 16
+-	finalLength -= len(currentXorKey)
+ 
+-	nextBlock := make([]byte, finalLength-len(currentXorKey))
++	nextBlock := make([]byte, grow)
+ 
+ 	block, err := aes.NewCipher(aesKey)
+ 	if err != nil {

@@ -25,6 +25,6 @@ Write-Host "Classpath: $cp"
 & $java -cp $cp -server `
   "-DhomePath=./config/" `
   "-DscriptsPath=./scripts/" `
-  "-DwzPath=./scripts/wz" `
+  "-DwzPath=./wz" `
   -Xms512m -Xmx2048m `
   server.Start

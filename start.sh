@@ -27,6 +27,6 @@ echo "Using java: $JAVA_BIN"
 exec "$JAVA_BIN" -cp "$CP" -server \
   -DhomePath=./config/ \
   -DscriptsPath=./scripts/ \
-  -DwzPath=./scripts/wz \
+  -DwzPath=./wz \
   -Xms512m -Xmx2048m \
   server.Start

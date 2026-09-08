@@ -124,7 +124,7 @@ public class MapleMapFactory
                 if (respawns) {
                     final MapleData mobRate = mapData.getChildByPath("info/mobRate");
                     if (mobRate != null) {
-                        monsterRate = (float)mobRate.getData();
+                        monsterRate = ((Number)mobRate.getData()).floatValue();
                     }
                 }
                 map = new MapleMap(mapid, this.channel, MapleDataTool.getInt("info/returnMap", mapData), monsterRate);
@@ -314,7 +314,7 @@ public class MapleMapFactory
         if (respawns) {
             final MapleData mobRate = mapData.getChildByPath("info/mobRate");
             if (mobRate != null) {
-                monsterRate = (float)mobRate.getData();
+                monsterRate = ((Number)mobRate.getData()).floatValue();
             }
         }
         final MapleMap map = new MapleMap(mapid, this.channel, MapleDataTool.getInt("info/returnMap", mapData), monsterRate);
