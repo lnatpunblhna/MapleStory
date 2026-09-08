@@ -2,3 +2,6 @@
 .dist/
 out/
 .idea/
+# 不再捆绑 JDK，使用本机自带
+jdk/
+.DS_Store

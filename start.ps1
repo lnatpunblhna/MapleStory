@@ -7,15 +7,14 @@ if (-not (Test-Path .\lib\mysql-connector-j-8.0.33.jar)) {
   & .\scripts\fetch-mysql-connector.ps1
 }
 
+# 使用本机 JDK/JRE：优先 JAVA_HOME，其次 PATH 上的 java
 $java = $null
 if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
   $java = "$env:JAVA_HOME\bin\java.exe"
 } elseif (Get-Command java -ErrorAction SilentlyContinue) {
   $java = (Get-Command java).Source
-} elseif (Test-Path .\jdk\jre\bin\java.exe) {
-  $java = (Resolve-Path .\jdk\jre\bin\java.exe).Path
 } else {
-  throw "java.exe not found. Set JAVA_HOME to JDK 8+."
+  throw "java.exe not found. Install JDK 8+ and set JAVA_HOME, or put java on PATH."
 }
 
 # lib first so com.mysql.cj wins over any old driver shaded in maple.jar

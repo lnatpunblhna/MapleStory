@@ -1,5 +1,5 @@
 # Rebuild LoginBridge classes into bin/maple.jar (Windows PowerShell)
-# Run from repo root. Needs a real JDK (javac). Bundled jdk/ is often JRE-only.
+# Run from repo root. Needs a real JDK (javac) installed on this machine.
 
 $ErrorActionPreference = "Stop"
 
@@ -10,8 +10,6 @@ function Find-Tool([string]$name) {
     $p = Join-Path $env:JAVA_HOME "bin\$name"
     if (Test-Path $p) { return $p }
   }
-  $bundled = Join-Path $PSScriptRoot "..\jdk\bin\$name"
-  if (Test-Path $bundled) { return (Resolve-Path $bundled).Path }
   return $null
 }
 
@@ -20,7 +18,7 @@ $jar = Find-Tool "jar.exe"
 if (-not $javac) {
   Write-Error @"
 javac.exe not found.
-This repo's .\jdk is often JRE-only (no compiler).
+A JRE has no compiler - you need a full JDK.
 Install JDK 8 (or 7), then either:
   1) set JAVA_HOME to that JDK, or
   2) ensure javac is on PATH

@@ -15,7 +15,6 @@
 | `start.ps1` / `start.sh` | Windows / Linux 启动（classpath 含 Connector/J 8） |
 | `bin/maple.jar` | 已编译服务端 |
 | `lib/` | `mysql-connector-j-8.0.33.jar`（用 `scripts/fetch-mysql-connector.ps1` 下载） |
-| `jdk/` | 可选捆绑 JRE（常为 1.7；推荐本机 **JDK 8+** 启动） |
 | `config/` | `server.properties` / `db.properties` 等 |
 | `scripts/` | JS 脚本 + `scripts/wz` 资源 |
 | `src/` | Java 源码（与 jar 对应） |
@@ -66,7 +65,7 @@ Classpath 为 `lib/mysql-connector-j-8.0.33.jar` + `bin/maple.jar`（lib 在前�
 
 入口类：`src/server/Start.java`（依次启动 World → LoginServer → ChannelServer → CashShopServer）。
 
-**环境**：推荐 **JDK/JRE 8+** + MySQL 5.7/8。捆绑 JRE 1.7 可跑旧逻辑，但不再作为升级路径首选。
+**环境**：使用**本机自带的 JDK/JRE 8+**（仓库不再捆绑 `jdk/`）+ MySQL 5.7/8。启动脚本按 `JAVA_HOME` → PATH 上的 `java` 顺序查找；都找不到会直接报错。
 
 ---
 
