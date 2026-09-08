@@ -102,12 +102,23 @@ public class MapleLifeFactory
             if (monsterData == null) {
                 return null;
             }
-            final MapleData monsterInfoData = monsterData.getChildByPath("info");
+            MapleData monsterInfoData = monsterData.getChildByPath("info");
+            // link 提前取：下面的属性回退和后面找 fly/move 都要用同一个值。
+            // 原版 Mob.wz 里 403 只怪带 link，其中 402 只自带完整属性、link 只用于复用动画；
+            // 只有 9501016 的 info 里除了 link 什么都没有，属性得整体从被链接的怪身上取。
+            final int link = MapleDataTool.getIntConvert("link", monsterInfoData, 0);
+            if (link != 0 && monsterInfoData.getChildByPath("maxHP") == null) {
+                final MapleData linkedData = MapleLifeFactory.data.getData(StringUtil.getLeftPaddedStr(link + ".img", '0', 11));
+                if (linkedData != null && linkedData.getChildByPath("info") != null) {
+                    monsterInfoData = linkedData.getChildByPath("info");
+                }
+            }
             stats = new MapleMonsterStats();
             stats.setHp(MapleDataTool.getIntConvert("maxHP", monsterInfoData));
             stats.setMp(MapleDataTool.getIntConvert("maxMP", monsterInfoData, 0));
             stats.setExp(MapleDataTool.getIntConvert("exp", monsterInfoData, 0));
-            stats.setLevel((short)MapleDataTool.getIntConvert("level", monsterInfoData));
+            // 9999999（隐形 dummy 怪）没有 level，给默认 1
+            stats.setLevel((short)MapleDataTool.getIntConvert("level", monsterInfoData, 1));
             stats.setRemoveAfter(MapleDataTool.getIntConvert("removeAfter", monsterInfoData, 0));
             stats.setrareItemDropLevel((byte)MapleDataTool.getIntConvert("rareItemDropLevel", monsterInfoData, 0));
             stats.setFixedDamage(MapleDataTool.getIntConvert("fixedDamage", monsterInfoData, -1));
@@ -139,7 +150,9 @@ public class MapleLifeFactory
             }
             final MapleData firstAttackData = monsterInfoData.getChildByPath("firstAttack");
             if (firstAttackData != null) {
-                if (firstAttackData.getType() == MapleDataType.FLOAT) {
+                // NX 把 WZ 的 float 和 double 合并成一种类型，所以这里要一起判
+                if (firstAttackData.getType() == MapleDataType.FLOAT
+                        || firstAttackData.getType() == MapleDataType.DOUBLE) {
                     stats.setFirstAttack(Math.round(MapleDataTool.getFloat(firstAttackData)) > 0);
                 }
                 else {
@@ -164,7 +177,8 @@ public class MapleLifeFactory
             if (reviveInfo != null) {
                 final List<Integer> revives = new LinkedList<Integer>();
                 for (final MapleData bdata : reviveInfo) {
-                    revives.add(MapleDataTool.getInt(bdata));
+                    // 9300295/9300296 的 revive 项是字符串形式的怪物 id，getIntConvert 会 parse
+                    revives.add(MapleDataTool.getIntConvert(bdata));
                 }
                 stats.setRevives(revives);
             }
@@ -179,7 +193,8 @@ public class MapleLifeFactory
                 stats.setSkills(skills);
             }
             decodeElementalString(stats, MapleDataTool.getString("elemAttr", monsterInfoData, ""));
-            final int link = MapleDataTool.getIntConvert("link", monsterInfoData, 0);
+            // link 已在上面取过（属性回退可能已经把 monsterInfoData 换成被链接的怪，
+            // 那样这里再读就取不到了），这里直接复用
             if (link != 0) {
                 monsterData = MapleLifeFactory.data.getData(StringUtil.getLeftPaddedStr(link + ".img", '0', 11));
             }
