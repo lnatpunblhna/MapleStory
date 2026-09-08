@@ -5,3 +5,10 @@ out/
 # 不再捆绑 JDK，使用本机自带
 jdk/
 .DS_Store
+# 编译产物
+build/
+# 游戏数据不随仓库分发，自行从原版客户端转成 NX（见 README）
+/wz/
+*.nx
+# 旧的 WZ-XML dump，已被 NX 取代
+/scripts/wz/
